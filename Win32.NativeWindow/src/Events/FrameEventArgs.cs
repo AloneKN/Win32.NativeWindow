@@ -1,0 +1,44 @@
+﻿namespace NativeWindow.Windowing.Events;
+
+
+/// <summary>
+/// Initializes a new instance of the <see cref="FrameEventArgs"/> struct.
+/// </summary>
+/// <param name="elapsedTicks">The elapsed ticks since the previous Update call.</param>
+/// <param name="elapsedSeconds">The elapsed time since the previous Update call, in seconds.</param>
+/// <param name="totalTicks">Total ticks since the start of the program.</param>
+/// <param name="totalSeconds">Total time since the start of the program, in seconds.</param>
+/// <param name="frameCount">Number of frames elapsed.</param>
+/// <param name="framesPerSecond">Current framerate.</param>
+public readonly struct FrameEventArgs(ulong elapsedTicks, double elapsedSeconds, ulong totalTicks, double totalSeconds, ulong frameCount, uint framesPerSecond)
+{
+    /// <summary>
+    /// Gets elapsed ticks since the previous Update call.
+    /// </summary>
+    public ulong ElapsedTicks { get; } = elapsedTicks;
+
+    /// <summary>
+    /// Gets elapsed time since the previous Update call, in seconds.
+    /// </summary>
+    public double ElapsedSeconds { get; } = elapsedSeconds;
+
+    /// <summary>
+    /// Gets total time since the start of the program.
+    /// </summary>
+    public ulong TotalTicks { get; } = totalTicks;
+
+    /// <summary>
+    /// Gets total time in seconds since the start of the program.
+    /// </summary>
+    public double TotalSeconds { get; } = totalSeconds;
+
+    /// <summary>
+    /// Gets total number of updates since start of the program.
+    /// </summary>
+    public ulong FrameCount { get; } = frameCount;
+
+    /// <summary>
+    /// Gets the current framerate.
+    /// </summary>
+    public uint FramesPerSecond { get; } = framesPerSecond;
+}
