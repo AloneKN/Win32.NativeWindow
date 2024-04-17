@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using NativeWindow.Windowing.Events;
+using System.Data;
 using System.Diagnostics;
 
 namespace NativeWindow.Windowing;
@@ -136,7 +137,7 @@ public class TimerState
     }
 
     // Update timer state, calling the specified Update function the appropriate number of times.
-    public void Tick()
+    public void NewFrame()
     {
         if (Stop)
         {
@@ -220,5 +221,16 @@ public class TimerState
     private static ulong SecondsToTicks(double seconds)
     {
         return (uint)(seconds * TicksPerSecond);
+    }
+
+    public static implicit operator FrameEventArgs(TimerState state)
+    {
+        return new FrameEventArgs(
+                state.ElapsedTicks,
+                state.ElapsedSeconds,
+                state.TotalTicks,
+                state.TotalSeconds,
+                state.FrameCount,
+                state.FramesPerSecond);
     }
 }

@@ -1,27 +1,35 @@
 ﻿using System.Collections;
 using System.Drawing;
+using System.Numerics;
 
 namespace NativeWindow.Windowing;
 
 public class MouseState
 {
-    private readonly BitArray _mouse = new BitArray((int)MouseButton.Count);
-    private readonly BitArray _mousePrevious = new BitArray((int)MouseButton.Count);
+    private readonly BitArray _mouse;
+    private readonly BitArray _mousePrevious;
 
-    public Point Position;
-    public Point Wheel;
+    public MouseState()
+    {
+        this._mouse = new BitArray((int)MouseButton.Count);
+        this._mousePrevious = new BitArray((int)MouseButton.Count);
+    }
 
-    public bool this[MouseButton MouseButton]
-    {
-        internal set => _mouse[(int)MouseButton] = value;
-        get => _mouse[(int)MouseButton];
-    }
-    public bool this[int index]
-    {
-        internal set => _mouse[index] = value;
-        get => _mouse[index];
-    }
-    
+    public Point Position { get; set; }
+
+    /// <summary>
+    /// Gets the cursor position of the last frame.
+    /// </summary>
+    public Point PreviousPosition { get; set; }
+
+    public Point Wheel { get; set; }
+
+    public int X => Position.X;
+
+    public int Y => Position.Y;
+
+    public Point Delta => new (Position.X - PreviousPosition.X, Position.Y - PreviousPosition.Y);
+
     public bool IsAnyButtonDown
     {
         get
@@ -36,6 +44,24 @@ public class MouseState
 
             return false;
         }
+    }
+
+    public bool this[MouseButton MouseButton]
+    {
+        set => _mouse[(int)MouseButton] = value;
+        get => _mouse[(int)MouseButton];
+    }
+    public bool this[int index]
+    {
+        set => _mouse[index] = value;
+        get => _mouse[index];
+    }
+
+    public void SetNewFrameData(Point position, Point wheel)
+    {
+        this.PreviousPosition = this.Position;
+        this.Position = position;
+        this.Wheel = wheel;
     }
     public bool IsButtonDown(MouseButton MouseButton)
     {

@@ -125,12 +125,9 @@ public enum Keys : int
     NumLock = 0x90,
     Scroll = 0x91,
 
-    LeftShift = 0xa0,
-    RightShift = 0xa1,
-    LeftControl = 0xa2,
-    RightControl = 0xa3,
-    LeftAlt = 0xa4,
-    RightAlt = 0xa5,
+    Shift = 0x10,
+    Control = 0x11,
+    Alt = 0x12,
     BrowserBack = 0xa6,
     BrowserForward = 0xa7,
     BrowserRefresh = 0xa8,
@@ -150,6 +147,7 @@ public enum Keys : int
     LaunchApplication1 = 0xb6,
     LaunchApplication2 = 0xb7,
 
+    OemInterrogation = 0xC1,
     OemSemicolon = 0xba,
     OemPlus = 0xbb,
     OemComma = 0xbc,

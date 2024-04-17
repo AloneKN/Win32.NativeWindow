@@ -1,8 +1,12 @@
-﻿using Windows.Win32.Foundation;
+﻿using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace NativeWindow.Windowing;
 internal static class Win32Helper
 {
+    public static FreeLibrarySafeHandle GetDefaultModule() => PInvoke.GetModuleHandle((string)null!);
+    public static string GenerateHash() => Guid.NewGuid().ToString().ToUpper();
+
     public const int MK_SHIFT = 0x0004;
     public static ushort GET_KEYSTATE_WPARAM(WPARAM wParam) => LOWORD(wParam);
     public static ushort GET_XBUTTON_WPARAM(WPARAM wParam) => HIWORD(wParam);

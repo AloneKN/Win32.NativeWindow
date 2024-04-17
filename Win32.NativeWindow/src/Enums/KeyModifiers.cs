@@ -24,12 +24,12 @@ public enum KeyModifiers
     Super = 0x0008,
 
     /// <summary>
-    ///     If caps lock is enabled.
+    /// If caps lock is enabled.
     /// </summary>
     CapsLock = 0x0010,
 
     /// <summary>
-    ///     If num lock is enabled.
+    /// If num lock is enabled.
     /// </summary>
     NumLock = 0x0020,
 }

@@ -15,30 +15,30 @@ public readonly struct FrameEventArgs(ulong elapsedTicks, double elapsedSeconds,
     /// <summary>
     /// Gets elapsed ticks since the previous Update call.
     /// </summary>
-    public ulong ElapsedTicks { get; } = elapsedTicks;
+    public ulong ElapsedTicks => elapsedTicks;
 
     /// <summary>
     /// Gets elapsed time since the previous Update call, in seconds.
     /// </summary>
-    public double ElapsedSeconds { get; } = elapsedSeconds;
+    public double ElapsedSeconds => elapsedSeconds;
 
     /// <summary>
     /// Gets total time since the start of the program.
     /// </summary>
-    public ulong TotalTicks { get; } = totalTicks;
+    public ulong TotalTicks => totalTicks;
 
     /// <summary>
     /// Gets total time in seconds since the start of the program.
     /// </summary>
-    public double TotalSeconds { get; } = totalSeconds;
+    public double TotalSeconds => totalSeconds;
 
     /// <summary>
     /// Gets total number of updates since start of the program.
     /// </summary>
-    public ulong FrameCount { get; } = frameCount;
+    public ulong FrameCount => frameCount;
 
     /// <summary>
     /// Gets the current framerate.
     /// </summary>
-    public uint FramesPerSecond { get; } = framesPerSecond;
+    public uint FramesPerSecond => framesPerSecond;
 }

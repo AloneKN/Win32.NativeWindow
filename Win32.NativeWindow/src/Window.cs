@@ -21,40 +21,56 @@ using static Windows.Win32.UI.WindowsAndMessaging.SHOW_WINDOW_CMD;
 using static Windows.Win32.UI.Input.KeyboardAndMouse.VIRTUAL_KEY;
 using NativeWindow.Windowing.Events;
 using System.Numerics;
-
+using Microsoft.Win32.SafeHandles;
+using System.Security.Cryptography.X509Certificates;
 
 namespace NativeWindow.Windowing;
 
-public unsafe class Window
+public unsafe class Window : IDisposable
 {
-    public static WindowProcessEvents.ExternalWindowDelegate? ExternalWindowEvents;
+    public static WindowProcessEvents.ExternalWindowDelegate? ExternalWindowEvents { get; set; }
+
     internal readonly WindowProcessEvents.WindowDelegate WindowDelegateEvent;
     internal HWND handler;
-    private RegisterParams registerParams;
-    private MSG msg;
-    private TimerState timerState;
 
-    public Window(in GameWindowSettings GameWindowSettings)
+    private readonly RegisterParams registerParams;
+    private MSG msg;
+
+    private readonly TimerState _timerState = new TimerState();
+    private readonly KeyboardState _keyboardState = new KeyboardState();
+    private readonly MouseState _mouseState = new MouseState();
+
+    private bool _disposed;
+    private bool _ClosedWin;
+    private bool _focus;
+    private int _countTitle;
+    private Point _wheel = Point.Empty;
+    private MONITORINFO _MONITORINFO1;
+    private WindowState _state;
+    private WindowBorder _Border;
+    private CursorMode _cursorMode;
+    private bool _cursorLock;
+
+    public Window(in WindowSettings settings)
     {
-        timerState = new TimerState();
         WindowDelegateEvent = ProccessEvents;
 
-        #region Register Class Win32
+        registerParams = RegisterWin32Class.Register(settings.Icon);
 
-        registerParams = RegisterWin32Class.RegisterClass();
+        #region Create
 
-        var tempState = GameWindowSettings.State;
-        var tempBorder = tempState is WindowState.FullScreen ? WindowBorder.Hidden : GameWindowSettings.Border;
+        var tempState = settings.State;
+        var tempBorder = tempState is WindowState.FullScreen ? WindowBorder.Hidden : settings.Border;
 
         handler = PInvoke.CreateWindowEx(
             WS_EX_APPWINDOW,
             registerParams.HashName,
-            GameWindowSettings.Title,
-            tempState is WindowState.Normal ? GetStyleBorder(tempBorder) : GetStyleBorder(tempBorder) | GetStyle(tempState),
-            GameWindowSettings.Position.X,
-            GameWindowSettings.Position.Y,
-            GameWindowSettings.Size.Width,
-            GameWindowSettings.Size.Height,
+            settings.Title,
+            tempState is WindowState.Normal ? GetStyleBorder(tempBorder) : GetStyleBorder(tempBorder) | GetStyleState(tempState),
+            settings.Position.X,
+            settings.Position.Y,
+            settings.Size.Width,
+            settings.Size.Height,
             default,
             default,
             registerParams.Handler,
@@ -68,23 +84,25 @@ public unsafe class Window
 
         WindowProcessEvents.Include(this);
 
-        MONITORINFO1.cbSize = (uint)Unsafe.SizeOf<MONITORINFO>();
-        PInvoke.GetMonitorInfo(PInvoke.MonitorFromWindow(handler, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), ref MONITORINFO1);
-
-        Title = GameWindowSettings.Title;
-        Size = GameWindowSettings.Size;
-        Position = GameWindowSettings.Position;
-        _state = tempState;
-        _Border = tempBorder;
-
-        PInvoke.UpdateWindow(handler);
+        _MONITORINFO1.cbSize = (uint)Unsafe.SizeOf<MONITORINFO>();
+        PInvoke.GetMonitorInfo(PInvoke.MonitorFromWindow(handler, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), ref _MONITORINFO1);
 
         #endregion
+
+        UpdateFrequency = settings.UpdateFrequency;
+        Title = settings.Title;
+        Size = settings.Size;
+        Position = settings.Position;
+        _cursorMode = settings.CursorMode;
+        _state = tempState;
+        _Border = tempBorder;
     }
 
-    public WindowHandler Handler => new WindowHandler(this.handler.Value);
+    #region Props
+    public WindowResourcePtr WindowHandler => new (this.handler.Value);
+    public KeyboardState KeyboardState => this._keyboardState;
+    public MouseState MouseState => this._mouseState;
 
-    private bool _focus;
     public bool Focused
     {
         get => _focus; 
@@ -95,8 +113,7 @@ public unsafe class Window
                     SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW | SWP_DRAWFRAME);
         }
     }
-
-    private int _countTitle;
+    
     public string Title
     {
         get
@@ -119,43 +136,18 @@ public unsafe class Window
     }
     public Point MousePosition
     {
-        get => MouseState.Position;
+        get => this._mouseState.Position;
         set
         {
-            MouseState.Position = value;
+            this._mouseState.Position = value;
+            PInvoke.SetCursorPos(value.X, value.Y);
         }
     }
-    public Size Size
-    {
-        get
-        {
-            PInvoke.GetClientRect(handler, out var rect);
-            return new Size(rect.right, rect.bottom);
-        }
-        set
-        {
-            PInvoke.SetWindowPos(handler, default, 0, 0, value.Width, value.Height,
-                SWP_NOMOVE |
-                SWP_NOZORDER |
-                SWP_SHOWWINDOW);
-        }
-    }
-    public Point Position
-    {
-        get
-        {
-            PInvoke.GetWindowRect(handler, out var rect);
-            return new Point(rect.left, rect.top);
-        }
-        set
-        {
-            PInvoke.SetWindowPos(handler, default, value.X, value.Y, 0, 0,
-                SWP_NOSIZE |
-                SWP_NOZORDER |
-                SWP_SHOWWINDOW);
-        }
-    }
-    private Point _wheel = new Point(0, 0);
+
+    public Point PreviousMousePosition => _mouseState.PreviousPosition;
+
+    public Point MouseDelta => _mouseState.Delta;
+
     public Point MouseWheel
     {
         get
@@ -194,9 +186,117 @@ public unsafe class Window
         }
     }
 
-    private MONITORINFO MONITORINFO1;
+    public Rectangle ClientRect
+    {
+        get
+        {
+            PInvoke.GetClientRect(handler, out var rect);
+            return new Rectangle(rect.X, rect.Y, rect.Width, rect.Height);
+        }
+    }
 
-    private WindowState _state;
+    public Size ClientSize
+    {
+        get
+        {
+            var rect = this.ClientRect;
+            return new Size(rect.Right, rect.Bottom);
+        }
+    }
+
+    public Size ClientPosition
+    {
+        get
+        {
+            var rect = this.ClientRect;
+            return new Size(rect.Left, rect.Top);
+        }
+    }
+
+    public float AspectRatio
+    {
+        get
+        {
+            var size = ClientSize;
+            return size.Width / (float)size.Height;
+        }
+    }
+
+    public Rectangle Rect
+    {
+        get
+        {
+            PInvoke.GetWindowRect(handler, out var rect);
+            return new Rectangle(rect.X, rect.Y, rect.Width, rect.Height);
+        }
+        set
+        {
+            PInvoke.SetWindowPos(handler, default, value.Left, value.Top, value.Right, value.Bottom,
+                SWP_NOZORDER |
+                SWP_SHOWWINDOW);
+        }
+    }
+
+    public Point Position
+    {
+        get
+        {
+            var rect = Rect;
+            return new Point(rect.Left, rect.Top);
+        }
+        set
+        {
+            PInvoke.SetWindowPos(handler, default, value.X, value.Y, 0, 0,
+                SWP_NOSIZE |
+                SWP_NOZORDER |
+                SWP_SHOWWINDOW);
+        }
+    }
+
+    public Size Size
+    {
+        get
+        {
+            var rect = this.ClientRect;
+            return new Size(rect.Right, rect.Bottom);
+        }
+        set
+        {
+            PInvoke.SetWindowPos(handler, default, 0, 0, value.Width, value.Height,
+                SWP_NOMOVE |
+                SWP_NOZORDER |
+                SWP_SHOWWINDOW);
+        }
+    }
+
+
+    public CursorMode CursorMode
+    {
+        get => this._cursorMode;
+        set
+        {
+            if(this._cursorMode != value)
+            {
+                this._cursorMode = value;
+
+                // That's the only way for this shit to work
+                this.AdjustCursorWin();
+                this.AdjustDimensionsWin();
+                this.AdjustCursorWin();
+            }
+
+        }
+    }
+
+    public Point Center
+    {
+        get
+        {
+            PInvoke.GetWindowRect(handler, out var rect);
+            return new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
+        }
+    }
+
     public WindowState State
     {
         get
@@ -205,13 +305,15 @@ public unsafe class Window
         }
         set
         {
-            if (State == value) return;
-
-            _state = value;
-            SetWindowState();
+            if (State != value)
+            {
+                _state = value;
+                this.AdjustDimensionsWin();
+                this.AdjustCursorWin();
+            }
         }
     }
-    private WindowBorder _Border;
+
     public WindowBorder Border
     {
         get
@@ -220,84 +322,13 @@ public unsafe class Window
         }
         set
         {
-            if (Border == value) return;
+            if (Border != value)
+            {
+                _Border = value;
+                this.AdjustDimensionsWin();
+                this.AdjustCursorWin();
+            }
 
-            _Border = value;
-            SetWindowState();
-        }
-    }
-
-    public void Close()
-    {
-        PInvoke.PostQuitMessage(0);
-        RegisterWin32Class.Unregister(this.registerParams);
-        PInvoke.DestroyWindow(handler);
-
-        WindowProcessEvents.Remove(this);
-    }
-
-    private static WINDOW_STYLE GetStyle(WindowState windowState)
-    {
-        return windowState switch
-        {
-            WindowState.Maximixed => WS_MAXIMIZE,
-            WindowState.Minimized => WS_MINIMIZE,
-            WindowState.FullScreen => WS_POPUP,
-            _ => throw new Exception()
-        };
-
-    }
-    private static WINDOW_STYLE GetStyleBorder(WindowBorder windowBorder)
-    {
-        return windowBorder switch
-        {
-            WindowBorder.Hidden => WS_OVERLAPPEDWINDOW | WS_SIZEBOX,
-            WindowBorder.Resizable => WS_OVERLAPPEDWINDOW,
-            WindowBorder.Fixed => WS_BORDER,
-            _ => throw new Exception()
-        };
-
-    }
-    private void SetWindowState()
-    {
-        switch (State)
-        {
-            case WindowState.Normal:
-                WINDOW_STYLE NorStyle = WS_VISIBLE | GetStyleBorder(Border);
-                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)NorStyle);
-                PInvoke.SetWindowPos(handler, default, 0, 0, 0, 0,
-                    SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_SHOWWINDOW | SWP_DRAWFRAME);
-                break;
-
-            case WindowState.Minimized:
-
-                WINDOW_STYLE MinStyle = WS_VISIBLE | GetStyle(State) | GetStyleBorder(Border);
-                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)MinStyle);
-                PInvoke.SetWindowPos(handler, default, 0, 0, 0, 0,
-                     SWP_NOZORDER | SWP_SHOWWINDOW | SWP_DRAWFRAME);
-                break;
-
-            case WindowState.Maximixed:
-
-                WINDOW_STYLE MaxStyle = WS_VISIBLE | GetStyle(State) | GetStyleBorder(Border);
-                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)MaxStyle);
-                PInvoke.SetWindowPos(handler, HWND.HWND_TOP,
-                    MONITORINFO1.rcMonitor.left, MONITORINFO1.rcMonitor.top,
-                    MONITORINFO1.rcMonitor.right - MONITORINFO1.rcMonitor.left,
-                    MONITORINFO1.rcMonitor.bottom - MONITORINFO1.rcMonitor.top,
-                    SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_DRAWFRAME);
-                break;
-
-            case WindowState.FullScreen:
-                _Border = WindowBorder.Hidden;
-                WINDOW_STYLE FullScreenStyle = WS_VISIBLE | GetStyle(State);
-                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)FullScreenStyle);
-                PInvoke.SetWindowPos(handler, HWND.HWND_TOP,
-                    MONITORINFO1.rcMonitor.left, MONITORINFO1.rcMonitor.top,
-                    MONITORINFO1.rcMonitor.right - MONITORINFO1.rcMonitor.left,
-                    MONITORINFO1.rcMonitor.bottom - MONITORINFO1.rcMonitor.top,
-                    SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_DRAWFRAME);
-                break;
         }
     }
 
@@ -326,33 +357,63 @@ public unsafe class Window
         }
     }
 
-    public void Run()
+    /// <summary>
+    /// Defines the update rate, for <c>variable</c> mode pass a <c>null</c> value or one that is less than 1.
+    /// </summary>
+    public double? UpdateFrequency
     {
-        PInvoke.ShowWindow(handler, SW_NORMAL);
-        SetWindowState();
-
-        while (this.IsRuning)
+        get => this._timerState.UpdateFrequency == 0.0 ? null : this._timerState.UpdateFrequency;
+        set
         {
-            timerState.Tick();
-
-            var frameEvent = new FrameEventArgs
-                (
-                    timerState.ElapsedTicks,
-                    timerState.ElapsedSeconds,
-                    timerState.TotalTicks,
-                    timerState.TotalSeconds,
-                    timerState.FrameCount,
-                    timerState.FramesPerSecond
-                );
-
-            this.OnUpdateFrame(frameEvent);
-            this.OnRenderFrame(frameEvent);
-
-            //this.ResetEvents();
+            if (value != null)
+            {
+                this._timerState.UpdateFrequency = (double)value;
+            }
+            else
+            {
+                this._timerState.UpdateFrequency = 0.0;
+            }
         }
-
-        this.OnUnload();
     }
+
+    /// <summary>
+    /// Get elapsed time since the previous Update call.
+    /// </summary>
+    public ulong ElapsedTicks => _timerState.ElapsedTicks;
+
+    /// <summary>
+    /// Get elapsed time since the previous Update call.
+    /// </summary>
+    public double ElapsedSeconds => _timerState.ElapsedSeconds;
+
+    /// <summary>
+    /// Get total time since the start of the program.
+    /// </summary>
+    public ulong TotalTicks => _timerState.TotalTicks;
+
+    /// <summary>
+    /// Get total time since the start of the program.
+    /// </summary>
+    public double TotalSeconds => _timerState.TotalSeconds;
+
+    /// <summary>
+    /// Get total number of updates since start of the program.
+    /// </summary>
+    public ulong FrameCount => _timerState.FrameCount;
+
+    /// <summary>
+    /// Get the current framerate.
+    /// </summary>
+    public uint FramesPerSecond => _timerState.FramesPerSecond;
+
+    /// <summary>
+    /// Gets a value indicating whether or not the time is in fixed mode.
+    /// </summary>
+    public bool UpdateIsVariable => _timerState.IsFixedTimeStep;
+
+    #endregion
+
+    #region Events
     public event Action<FrameEventArgs>? UpdateFrame;
 
     public event Action<FrameEventArgs>? RenderFrame;
@@ -363,7 +424,7 @@ public unsafe class Window
 
     public event Action<MoveEventArgs>? Move;
 
-    public event Action<bool>? Focus;
+    public event Action<FocusEventArgs>? Focus;
 
     public event Action<KeyboardKeyEventArgs>? KeyDown;
 
@@ -375,7 +436,7 @@ public unsafe class Window
 
     public event Action<MouseMoveEventArgs>? MouseMove;
 
-    public event Action<MouseMoveEventArgs>? MouseWheelAction;
+    public event Action<MouseWheelEventArgs>? MouseWheelAction;
 
     protected virtual void OnUpdateFrame(FrameEventArgs eventArgs)
     {
@@ -397,9 +458,9 @@ public unsafe class Window
     {
         this.Move?.Invoke(eventArgs);
     }
-    protected virtual void OnFocus(bool isFocus)
+    protected virtual void OnFocus(FocusEventArgs eventArgs)
     {
-        this.Focus?.Invoke(isFocus);
+        this.Focus?.Invoke(eventArgs);
     }
     protected virtual void OnKeyboardKeyDown(KeyboardKeyEventArgs eventArgs)
     {
@@ -417,50 +478,121 @@ public unsafe class Window
     {
         this.MouseUp?.Invoke(eventArgs);
     }
-
     protected virtual void OnMouseMove(MouseMoveEventArgs eventArgs)
     {
         this.MouseMove?.Invoke(eventArgs);
     }
-
-    protected virtual void OnMouseWheel(MouseMoveEventArgs eventArgs)
+    protected virtual void OnMouseWheel(MouseWheelEventArgs eventArgs)
     {
         this.MouseWheelAction?.Invoke(eventArgs);
     }
+    #endregion
 
-    public KeyboardState KeyboardState { get; private set; } = new KeyboardState();
-    public MouseState MouseState { get; private set; } = new MouseState();
+    #region Mouse and keys Inputs
     public bool IsKeyDown(Keys Key)
     {
-        return KeyboardState.IsKeyDown(Key);
+        return _keyboardState.IsKeyDown(Key);
     }
     public bool IsKeyUp(Keys Key)
     {
-        return KeyboardState.IsKeyUp(Key);
+        return _keyboardState.IsKeyUp(Key);
 
     }
     public bool IsKeyPress(Keys Key)
     {
-        return KeyboardState.IsKeyPress(Key);
+        return _keyboardState.IsKeyPress(Key);
     }
 
     public bool IsMouseButtonDown(MouseButton MouseButton)
     {
-        return MouseState.IsButtonDown(MouseButton);
+        return _mouseState.IsButtonDown(MouseButton);
     }
     public bool IsMouseButtonUp(MouseButton MouseButton)
     {
-        return MouseState.IsButtonUp(MouseButton);
+        return _mouseState.IsButtonUp(MouseButton);
     }
     public bool IsMouseButtonPress(MouseButton MouseButton)
     {
-        return MouseState.IsButtonPress(MouseButton);
+        return _mouseState.IsButtonPress(MouseButton);
+    }
+    #endregion
+
+    public void Run()
+    {
+        this.AdjustDimensionsWin();
+        this.AdjustCursorWin();
+
+        PInvoke.ShowWindow(handler, SHOW_WINDOW_CMD.SW_NORMAL);
+        PInvoke.UpdateWindow(handler);
+
+        this.OnResize(new ResizeEventArgs(this.ClientSize));
+
+        while (this.IsRuning)
+        {
+            double updatePeriod = this._timerState.UpdateFrequency == 0.0 ? 0 : this._timerState.UpdateFrequency;
+
+            this.NewFrame();
+
+            FrameEventArgs frameEvent = this._timerState;
+
+            this.OnUpdateFrame(frameEvent);
+            this.OnRenderFrame(frameEvent);
+
+            double timeToNextUpdate = updatePeriod - this._timerState.ElapsedSeconds;
+
+            if(timeToNextUpdate > 0)
+            {
+                AccurateSleep(timeToNextUpdate, 8);
+            }
+        }
+
+        this.OnUnload();
     }
 
-    public void ResetEvents()
+    private void NewFrame()
     {
-        this.MouseWheel = default;
+        this._timerState.NewFrame();
 
+        if (this._cursorLock)
+        {
+            // Even if the mouse is fixed we still want the delta
+            var prev = this._mouseState.PreviousPosition;
+            this.MousePosition = this.Center;
+            this._mouseState.SetNewFrameData(this.MousePosition, this.MouseWheel);
+            this._mouseState.PreviousPosition = prev;
+        }
+        else
+        {
+            this._mouseState.SetNewFrameData(this.MousePosition, this.MouseWheel);
+        }
+        this.MouseWheel = Point.Empty;
+    }
+
+    public void Close()
+    {
+        if(!_ClosedWin)
+        {
+            PInvoke.PostQuitMessage(0);
+            RegisterWin32Class.Unregister(this.registerParams);
+            PInvoke.DestroyWindow(handler);
+            WindowProcessEvents.Remove(this);
+            this._ClosedWin = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        this.OnDispose();
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void OnDispose()
+    {
+        if(!this._disposed)
+        {
+            this.Close();
+            this._disposed = true;
+        }
     }
 
     private void ProccessEvents(HWND hWnd, uint message, WPARAM wParam, LPARAM lParam)
@@ -469,13 +601,15 @@ public unsafe class Window
 
         switch (message)
         {
+            #region Window Resources
             case PInvoke.WM_CREATE:
                 break;
 
             case PInvoke.WM_DESTROY:
-                PInvoke.PostQuitMessage(0);
+                {
+                    PInvoke.PostQuitMessage(0);
+                }
                 break;
-
 
             case PInvoke.WM_SIZE:
                 {
@@ -491,56 +625,89 @@ public unsafe class Window
                 }
                 break;
 
+            case PInvoke.WM_MOVE:
+                {
+                    this.OnMove(new MoveEventArgs(this.Position));
+                }
+                break;
+
 
             case PInvoke.WM_SETFOCUS:
                 {
                     _focus = true;
-                    this.OnFocus(true);
+                    this.OnFocus(new FocusEventArgs(true));
                 }
                 break;
 
             case PInvoke.WM_KILLFOCUS:
                 {
                     _focus = false;
-                    this.OnFocus(false);
+                    this.OnFocus(new FocusEventArgs(false));
                 }
                 break;
+            #endregion
 
-
+            #region Keyboard
             case PInvoke.WM_KEYDOWN:
                 {
                     var scanCode = (int)wParam.Value;
-                    KeyboardState[scanCode] = true;
+                    var args = new KeyboardKeyEventArgs(scanCode, InputAction.Press, false);
 
-                    this.OnKeyboardKeyDown(new KeyboardKeyEventArgs(scanCode));
+                    this._keyboardState[scanCode] = true;
+
+                    this.OnKeyboardKeyDown(args);
                 }
                 break;
 
             case PInvoke.WM_KEYUP:
                 {
                     var scanCode = (int)wParam.Value;
-                    KeyboardState[scanCode] = false;
+                    var args = new KeyboardKeyEventArgs(scanCode, InputAction.Release, false);
 
+                    this._keyboardState[scanCode] = false;
 
-                    this.OnKeyboardKeyUp(new KeyboardKeyEventArgs(scanCode));
+                    this.OnKeyboardKeyUp(args);
                 }
                 break;
 
             case PInvoke.WM_SYSKEYDOWN:
                 {
-                    
+                    var scanCode = (int)wParam.Value;
+
+                    this._keyboardState[Keys.Alt] = true;
+                    this._keyboardState.AltPressed = true;
+
+                    if((Keys)scanCode != Keys.Alt)
+                    {
+                        var args = new KeyboardKeyEventArgs(scanCode, InputAction.Press, true);
+                        this._keyboardState[scanCode] = true;
+                        this.OnKeyboardKeyDown(args);
+                    }
+
                 }
                 break;
             case PInvoke.WM_SYSKEYUP:
                 {
-                    
+                    var scanCode = (int)wParam.Value;
+                    this._keyboardState[Keys.Alt] = false;
+                    this._keyboardState.AltPressed = false;
+
+                    if ((Keys)scanCode != Keys.Alt)
+                    {
+                        var args = new KeyboardKeyEventArgs(scanCode, InputAction.Release, true);
+                        this._keyboardState[scanCode] = false;
+                        this.OnKeyboardKeyUp(args);
+                    }
                 }
                 break;
+            #endregion
 
+            #region Mouse
             case PInvoke.WM_MOUSEMOVE:
                 {
-                    MouseState.Position = new Point(Win32Helper.GET_X_LPARAM(lParam), Win32Helper.GET_Y_LPARAM(lParam));
-                    OnMouseMove(new MouseMoveEventArgs(MouseState.Position));
+                    this._mouseState.PreviousPosition = this._mouseState.Position;
+                    this._mouseState.Position = new Point(Win32Helper.GET_X_LPARAM(lParam), Win32Helper.GET_Y_LPARAM(lParam));
+                    OnMouseMove(new MouseMoveEventArgs(this._mouseState.Position, this._mouseState.PreviousPosition));
                 }
                 break;
 
@@ -555,56 +722,71 @@ public unsafe class Window
                         _wheel.Y = Win32Helper.GET_WHEEL_DELTA_WPARAM(wParam);
                     }
 
-                    this.OnMouseWheel(new MouseMoveEventArgs(MouseWheel));
+                    var wheel = MouseWheel;
+
+                    this._mouseState.Wheel = wheel;
+                    this.OnMouseWheel(new MouseWheelEventArgs(wheel));
                 }
                 break;
 
             case PInvoke.WM_LBUTTONDOWN:
                 {
                     var scanCode = (int)MouseButton.Button1;
-                    MouseState[scanCode] = true;
+                    var args = new MouseButtonEventArgs(scanCode, InputAction.Press);
 
-                    this.OnMouseButtonDown(new MouseButtonEventArgs(scanCode));
+                    _mouseState[scanCode] = true;
+
+                    this.OnMouseButtonDown(args);
                 }
                 break;
             case PInvoke.WM_LBUTTONUP:
                 {
                     var scanCode = (int)MouseButton.Button1;
-                    MouseState[scanCode] = false;
+                    var args = new MouseButtonEventArgs(scanCode, InputAction.Release);
 
-                    this.OnMouseButtonUp(new MouseButtonEventArgs(scanCode));
+                    _mouseState[scanCode] = false;
+
+                    this.OnMouseButtonUp(args);
                 }
                 break;
             case PInvoke.WM_RBUTTONDOWN:
                 {
                     var scanCode = (int)MouseButton.Button2;
-                    MouseState[scanCode] = true;
+                    var args = new MouseButtonEventArgs(scanCode, InputAction.Press);
 
-                    this.OnMouseButtonDown(new MouseButtonEventArgs(scanCode));
+                    _mouseState[scanCode] = true;
+
+                    this.OnMouseButtonDown(args);
                 }
                 break;
             case PInvoke.WM_RBUTTONUP:
                 {
                     var scanCode = (int)MouseButton.Button2;
-                    MouseState[scanCode] = false;
+                    var args = new MouseButtonEventArgs(scanCode, InputAction.Release);
 
-                    this.OnMouseButtonUp(new MouseButtonEventArgs(scanCode));
+                    _mouseState[scanCode] = false;
+
+                    this.OnMouseButtonUp(args);
                 }
                 break;
             case PInvoke.WM_MBUTTONDOWN:
                 {
                     var scanCode = (int)MouseButton.Button3;
-                    MouseState[scanCode] = true;
+                    var args = new MouseButtonEventArgs(scanCode, InputAction.Press);
 
-                    this.OnMouseButtonDown(new MouseButtonEventArgs(scanCode));
+                    _mouseState[scanCode] = true;
+
+                    this.OnMouseButtonDown(args);
                 }
                 break;
             case PInvoke.WM_MBUTTONUP:
                 {
                     var scanCode = (int)MouseButton.Button3;
-                    MouseState[scanCode] = false;
+                    var args = new MouseButtonEventArgs(scanCode, InputAction.Release);
 
-                    this.OnMouseButtonUp(new MouseButtonEventArgs(scanCode));
+                    _mouseState[scanCode] = false;
+
+                    this.OnMouseButtonUp(args);
                 }
                 break;
 
@@ -614,18 +796,22 @@ public unsafe class Window
                     case PInvoke.XBUTTON1:
                         {
                             var scanCode = (int)MouseButton.Button5;
-                            MouseState[scanCode] = true;
+                            var args = new MouseButtonEventArgs(scanCode, InputAction.Press);
 
-                            this.OnMouseButtonDown(new MouseButtonEventArgs(scanCode));
+                            _mouseState[scanCode] = true;
+
+                            this.OnMouseButtonDown(args);
                         }
                         break;
 
                     case PInvoke.XBUTTON2:
                         {
                             var scanCode = (int)MouseButton.Button4;
-                            MouseState[scanCode] = true;
+                            var args = new MouseButtonEventArgs(scanCode, InputAction.Press);
 
-                            this.OnMouseButtonDown(new MouseButtonEventArgs(scanCode));
+                            _mouseState[scanCode] = true;
+
+                            this.OnMouseButtonDown(args);
                         }
                         break;
                 }
@@ -637,22 +823,168 @@ public unsafe class Window
                     case PInvoke.XBUTTON1:
                         {
                             var scanCode = (int)MouseButton.Button5;
-                            MouseState[scanCode] = false;
+                            var args = new MouseButtonEventArgs(scanCode, InputAction.Release);
 
-                            this.OnMouseButtonUp(new MouseButtonEventArgs(scanCode));
+                            _mouseState[scanCode] = false;
+
+                            this.OnMouseButtonUp(args);
                         }
                         break;
 
                     case PInvoke.XBUTTON2:
                         {
                             var scanCode = (int)MouseButton.Button4;
-                            MouseState[scanCode] = false;
+                            var args = new MouseButtonEventArgs(scanCode, InputAction.Release);
 
-                            this.OnMouseButtonUp(new MouseButtonEventArgs(scanCode));
+                            _mouseState[scanCode] = false;
+
+                            this.OnMouseButtonUp(args);
                         }
                         break;
                 }
                 break;
+                #endregion
         }
     }
+
+    #region Internals
+    private void AdjustDimensionsWin()
+    {
+        switch (State)
+        {
+            case WindowState.Normal:
+                WINDOW_STYLE NorStyle = WS_VISIBLE | GetStyleBorder(Border);
+                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)NorStyle);
+                PInvoke.SetWindowPos(handler, default, 0, 0, 0, 0,
+                    SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_SHOWWINDOW | SWP_DRAWFRAME);
+                break;
+
+            case WindowState.Minimized:
+
+                WINDOW_STYLE MinStyle = WS_VISIBLE | GetStyleState(State) | GetStyleBorder(Border);
+                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)MinStyle);
+                PInvoke.SetWindowPos(handler, default, 0, 0, 0, 0,
+                     SWP_NOZORDER | SWP_SHOWWINDOW | SWP_DRAWFRAME);
+                break;
+
+            case WindowState.Maximixed:
+
+                WINDOW_STYLE MaxStyle = WS_VISIBLE | GetStyleState(State) | GetStyleBorder(Border);
+                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)MaxStyle);
+                PInvoke.SetWindowPos(handler, HWND.HWND_TOP,
+                    _MONITORINFO1.rcMonitor.left, _MONITORINFO1.rcMonitor.top,
+                    _MONITORINFO1.rcMonitor.right - _MONITORINFO1.rcMonitor.left,
+                    _MONITORINFO1.rcMonitor.bottom - _MONITORINFO1.rcMonitor.top,
+                    SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_DRAWFRAME);
+                break;
+
+            case WindowState.FullScreen:
+                _Border = WindowBorder.Hidden;
+                WINDOW_STYLE FullScreenStyle = WS_VISIBLE | GetStyleState(State);
+                PInvoke.SetWindowLong(handler, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)FullScreenStyle);
+                PInvoke.SetWindowPos(handler, HWND.HWND_TOP,
+                    _MONITORINFO1.rcMonitor.left, _MONITORINFO1.rcMonitor.top,
+                    _MONITORINFO1.rcMonitor.right - _MONITORINFO1.rcMonitor.left,
+                    _MONITORINFO1.rcMonitor.bottom - _MONITORINFO1.rcMonitor.top,
+                    SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_DRAWFRAME);
+                break;
+        }
+
+    }
+    private void AdjustCursorWin()
+    {
+        switch (this.CursorMode)
+        {
+            case CursorMode.Normal:
+                {
+                    RECT? rect = null;
+                    PInvoke.ClipCursor(rect);
+                    PInvoke.ShowCursor(true);
+                    this._cursorLock = false;
+                    break;
+                }
+            case CursorMode.Hidden:
+                {
+                    RECT? rect = null;
+                    PInvoke.ClipCursor(rect);
+                    PInvoke.ShowCursor(false);
+                    this._cursorLock = false;
+                    break;
+                }
+            case CursorMode.GrabbedWindow:
+                {
+                    PInvoke.GetWindowRect(handler, out var rect);
+                    PInvoke.ClipCursor(rect);
+                    PInvoke.ShowCursor(true);
+                    this._cursorLock = false;
+                    break;
+                }
+            case CursorMode.HiddenGrabbedWindow:
+                {
+                    PInvoke.GetWindowRect(handler, out var rect);
+                    PInvoke.ClipCursor(rect);
+                    PInvoke.ShowCursor(false);
+                    this._cursorLock = false;
+                    break;
+                }
+            case CursorMode.HiddenGrabbedCenter:
+                {
+                    PInvoke.ShowCursor(false);
+
+                    RECT? rectEmpty = null;
+                    PInvoke.ClipCursor(rectEmpty);
+
+                    var pos = Center;
+                    this.MousePosition = pos;
+
+                    this._cursorLock = true;
+                    break;
+                }
+        }
+
+    }
+    private static WINDOW_STYLE GetStyleState(WindowState windowState)
+    {
+        return windowState switch
+        {
+            WindowState.Maximixed => WS_MAXIMIZE,
+            WindowState.Minimized => WS_MINIMIZE,
+            WindowState.FullScreen => WS_POPUP,
+            _ => throw new Exception()
+        };
+
+    }
+    private static WINDOW_STYLE GetStyleBorder(WindowBorder windowBorder)
+    {
+        return windowBorder switch
+        {
+            WindowBorder.Hidden => WS_OVERLAPPEDWINDOW | WS_SIZEBOX,
+            WindowBorder.Resizable => WS_OVERLAPPEDWINDOW,
+            WindowBorder.Fixed => WS_BORDER,
+            _ => throw new Exception()
+        };
+
+    }
+
+    private static void AccurateSleep(double seconds, int expectedSchedulerPeriod)
+    {
+        // FIXME: Make this a parameter?
+        const double TOLERANCE = 0.02;
+
+        long t0 = Stopwatch.GetTimestamp();
+        long target = t0 + (long)(seconds * Stopwatch.Frequency);
+
+        double ms = (seconds * 1000) - (expectedSchedulerPeriod * TOLERANCE);
+        int ticks = (int)(ms / expectedSchedulerPeriod);
+        if (ticks > 0)
+        {
+            Thread.Sleep(ticks * expectedSchedulerPeriod);
+        }
+
+        while (Stopwatch.GetTimestamp() < target)
+        {
+            Thread.Yield();
+        }
+    }
+    #endregion
 }

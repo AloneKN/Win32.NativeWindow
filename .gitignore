@@ -1,3 +1,6 @@
 /.vs
 /Win32.NativeWindow/bin
 /Win32.NativeWindow/obj
+/nuget
+/Test/bin
+/Test/obj

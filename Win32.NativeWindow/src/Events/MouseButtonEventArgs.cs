@@ -1,12 +1,12 @@
 ﻿namespace NativeWindow.Windowing.Events;
 
-public readonly struct MouseButtonEventArgs(int scanCode)
+public readonly struct MouseButtonEventArgs(int scanCode, InputAction action)
 {
-    public MouseButton Button { get; } = (MouseButton)scanCode;
-    public int ScanCode { get; } = scanCode;
+    public MouseButton Button => (MouseButton)scanCode;
 
-    public override string ToString()
-    {
-        return string.Format("< Button: {0} ScanCode: {1} >", Button.ToString(), ScanCode);
-    }
+    public int ScanCode => scanCode;
+
+    public InputAction Action => action;
+
+    public static implicit operator MouseButton(MouseButtonEventArgs e) => e.Button;
 }

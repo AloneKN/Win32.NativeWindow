@@ -1,46 +1,59 @@
-Win32 window system for C#
+# Win32 native window system for C#
 
-How to use
+## A native win32 windowing system for Windows. Targeted for use in DirectX applications.
+
+
+[![Nuget](https://img.shields.io/nuget/v/Win32.NativeWindow)](https://www.nuget.org/packages/Win32.NativeWindow/)
+
+---
+#### Usage Examples
+
+###### Namespaces
+Using 
 ```csharp
-public class Program : Window
+using NativeWindow.Windowing;
+using NativeWindow.Windowing.Events;
+```
+There are no secrets, it is simple and easy to use, with well-defined event systems.
+
+```csharp
+internal class Program(WindowSettings gws) : Window(gws)
 {
-    public Program() : base(new GameWindowSettings
+    protected override void OnUpdateFrame(FrameEventArgs eventArgs)
     {
-        Position = new Point(0),
-        Size = new Size(1600, 900),
-        Title = "DirectxApp",
-        State = WindowState.Normal,
-        Border = WindowBorder.Resizable
-    })
-    {
-        //
+        base.OnUpdateFrame(eventArgs);
     }
-    protected override void OnUpdateFrame(FrameEventArgs frameEvent)
-    {
-        base.OnUpdateFrame(frameEvent);
 
-        if(IsKeyPress(Keys.Escape))
+    protected override void OnResize(ResizeEventArgs eventArgs)
+    {
+        base.OnResize(eventArgs);
+    }
+
+    protected override void OnKeyboardKeyDown(KeyboardKeyEventArgs eventArgs)
+    {
+        base.OnKeyboardKeyDown(eventArgs);
+
+    }
+    // protected override void On...
+
+    static void Main(string[] args)
+    {
+        using var window = new Program(new WindowSettings()
         {
-            Close();
-        }
-    }
-    protected override void OnRenderFrame(FrameEventArgs FrameTimer)
-    {
-        base.OnRenderFrame(FrameTimer);
-    }
-    protected override void OnResize(ResizeEventArgs FrameResize)
-    {
-        base.OnResize(FrameResize);
-    }
-    protected override void OnUnload()
-    {
-        base.OnUnload();
-    }
+            Border = WindowBorder.Resizable,
+            Position = Point.Empty,
+            Size = new Size(800, 600),
+            State = WindowState.Normal,
+            CursorMode = CursorMode.Normal,
+            Title = "Test",
+            UpdateFrequency = null,
+            Icon = WindowResourcePtr.LoadIcon("Content\\win.ico"),
+        });
 
-    public static void Main()
-    {
-        Program program = new Program();
-        program.Run();
+        window.Run();
     }
 }
 ```
+---
+
+##### License

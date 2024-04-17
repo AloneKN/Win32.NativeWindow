@@ -1,20 +1,17 @@
 ﻿using System.Collections;
+using System.Numerics;
 
 namespace NativeWindow.Windowing;
 
 public class KeyboardState
 {
-    private readonly BitArray _keys = new BitArray((int)Keys.Count);
-    private readonly BitArray _keysPrevious = new BitArray((int)Keys.Count);
-    public bool this[Keys Keys]
+    private readonly BitArray _keys;
+    private readonly BitArray _keysPrevious;
+
+    public KeyboardState()
     {
-        internal set => _keys[(int)Keys] = value;
-        get => _keys[(int)Keys];
-    }
-    public bool this[int index]
-    {
-        internal set => _keys[index] = value;
-        get => _keys[index];
+        this._keys = new BitArray((int)Keys.Count);
+        this._keysPrevious = new BitArray((int)Keys.Count);
     }
 
     public bool IsAnyKeyDown
@@ -32,6 +29,30 @@ public class KeyboardState
             return false;
         }
     }
+
+    public bool AltPressed { get; set; }
+
+    public bool Shift => this.IsKeyDown(Keys.Shift);
+
+    public bool Control => this.IsKeyDown(Keys.Control);
+
+    public bool Enter => this.IsKeyDown(Keys.Enter);
+
+    public bool LeftWindows => this.IsKeyDown(Keys.LeftWindows);
+
+    public bool RightWindows => this.IsKeyDown(Keys.RightWindows);
+
+    public bool this[Keys Keys]
+    {
+        set => _keys[(int)Keys] = value;
+        get => _keys[(int)Keys];
+    }
+    public bool this[int index]
+    {
+        set => _keys[index] = value;
+        get => _keys[index];
+    }
+
     public bool IsKeyDown(Keys Key)
     {
         return _keys[(int)Key];

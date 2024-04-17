@@ -3,29 +3,17 @@ using System.Runtime.InteropServices;
 using win32 = global::Windows.Win32;
 using Windows.Win32;
 using Windows.Win32.Foundation;
-using Windows.Win32.UI.Input.KeyboardAndMouse;
 using Windows.Win32.UI.WindowsAndMessaging;
-
-using static Windows.Win32.UI.WindowsAndMessaging.PEEK_MESSAGE_REMOVE_TYPE;
 using static Windows.Win32.UI.WindowsAndMessaging.WNDCLASS_STYLES;
-using static Windows.Win32.UI.Input.KeyboardAndMouse.VIRTUAL_KEY;
-
-using static Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE;
-using static Windows.Win32.UI.WindowsAndMessaging.WINDOW_EX_STYLE;
-using static Windows.Win32.UI.WindowsAndMessaging.SYSTEM_METRICS_INDEX;
-using static Windows.Win32.UI.WindowsAndMessaging.SHOW_WINDOW_CMD;
 using static NativeWindow.Windowing.WindowProcessEvents;
 
 namespace NativeWindow.Windowing;
 
 internal static unsafe class RegisterWin32Class
 {
-    public static RegisterParams RegisterClass()
+    public static RegisterParams Register(WindowResourcePtr iconResPtr)
     {
-        var handle = PInvoke.GetModuleHandle((string)null!);
-        var generatedHash = Guid.NewGuid().ToString().ToUpper();
-
-        var winParams = new RegisterParams(handle, generatedHash);
+        var winParams = new RegisterParams(Win32Helper.GetDefaultModule(), Win32Helper.GenerateHash());
 
         fixed (char* lpszClassName = winParams.HashName)
         {
@@ -33,15 +21,19 @@ internal static unsafe class RegisterWin32Class
 
             var wndClassEx = new WNDCLASSEXW
             {
+                lpszClassName = lpszClassName,
                 cbSize = (uint)Unsafe.SizeOf<WNDCLASSEXW>(),
                 style = CS_CLASSDC,
                 lpfnWndProc = &ProccessMainWindowEvents,
+                cbClsExtra = 0,
+                cbWndExtra = 0,
                 hInstance = winParams.HInstance,
-                hCursor = PInvoke.LoadCursor((HINSTANCE)IntPtr.Zero, szCursorName),
+                hIcon = new HICON(iconResPtr),
+                hIconSm = HICON.Null,
+                //hCursor = PInvoke.LoadCursor((HINSTANCE)IntPtr.Zero, szCursorName),
+                hCursor = HCURSOR.Null,
                 hbrBackground = (win32.Graphics.Gdi.HBRUSH)IntPtr.Zero,
-                hIcon = (HICON)IntPtr.Zero,
-                lpszClassName = lpszClassName
-
+                lpszMenuName = null,
             };
 
             if (PInvoke.RegisterClassEx(&wndClassEx) is 0)
@@ -49,6 +41,7 @@ internal static unsafe class RegisterWin32Class
                 throw new InvalidOperationException($"Failed to register window class. Error::{Marshal.GetLastWin32Error()}");
             }
         }
+
 
         return winParams;
     }

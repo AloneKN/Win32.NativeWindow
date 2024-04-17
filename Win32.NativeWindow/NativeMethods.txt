@@ -3,10 +3,12 @@ PeekMessage
 TranslateMessage
 DispatchMessage
 GetMessage
+SetClassLongPtr
 RegisterClassEx
 RegisterClassExW
 DefWindowProc
 LoadCursor
+LoadImage
 PostQuitMessage
 CreateWindowW
 CreateWindowExW
@@ -29,6 +31,12 @@ GetScrollPos
 SetWindowLong
 GetMonitorInfo
 MonitorFromWindow
+CreateIcon
+ShowCursor
+ClipCursor
+SetCursorPos
+GetCursorPos
+GetAsyncKeyState
 
 QueryPerformanceFrequency
 QueryPerformanceCounter

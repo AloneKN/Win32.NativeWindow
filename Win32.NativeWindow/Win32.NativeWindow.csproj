@@ -6,15 +6,26 @@
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>NativeWindow.Windowing</RootNamespace>
-		<GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageId>Win32.NativeWindow</PackageId>
-		<Version>1.0.0</Version>
-		<Authors>KalvinCK</Authors>
-		<Description>Win32 window system library.</Description>
-		<PackageTags>c#; win32; window; directx; game;</PackageTags>
-		<PackageProjectUrl>https://github.com/KalvinCK/Win32.NativeWindow</PackageProjectUrl>
-		<RepositoryUrl>https://github.com/KalvinCK/Win32.NativeWindow</RepositoryUrl>
 	</PropertyGroup>
+
+  <PropertyGroup>
+    <PackageOutputPath>..\nuget</PackageOutputPath>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PublishRelease>true</PublishRelease>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>win.png</PackageIcon>
+    <PackageId>Win32.NativeWindow</PackageId>
+		<Version>1.1.0</Version>
+		<Authors>KalvinCK</Authors>
+		<Description>Win32 native window system for C#.</Description>
+		<PackageTags>C#; Win32; Windows; Windows; Directx; Game;</PackageTags>
+		<RepositoryUrl>https://github.com/KalvinCK/Win32.NativeWindow</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\win.png" Pack="true" PackagePath="\"/>
+    <None Include="..\README.md" Pack="true" PackagePath="\"/>
+  </ItemGroup>
 
 	<ItemGroup>
 		<None Include="..\.editorconfig" Link=".editorconfig" />
